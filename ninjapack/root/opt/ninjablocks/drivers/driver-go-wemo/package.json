@@ -1,0 +1,13 @@
+{
+  "name": "driver-wemo",
+  "version": "0.1.0",
+  "description": "Ninja Sphere - Belkin Wemo Driver",
+  "main": "driver-go-hue",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Nick Clark <nick@ninjablocks.com>",
+  "license": "MIT",
+  "topics": {},
+  "maxMemory": 10
+}
