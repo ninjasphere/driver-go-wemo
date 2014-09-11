@@ -11,6 +11,8 @@ import (
 	"github.com/ninjasphere/go-ninja/devices"
 )
 
+var seenSwitches []string //Store serial numbers of all seen switches
+
 type WemoSwitchContext struct {
 	Info   *wemo.DeviceInfo
 	Switch *wemo.Device
@@ -66,4 +68,14 @@ func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 	}
 
 	return ws, nil
+}
+
+func isUnique(newSwitch *wemo.DeviceInfo) bool {
+	ret := true
+	for _, s := range seenSwitches {
+		if newSwitch.SerialNumber == s {
+			ret = false
+		}
+	}
+	return ret
 }

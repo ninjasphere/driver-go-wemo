@@ -45,13 +45,17 @@ func main() {
 	}
 
 	api := wemo.NewByIp(ipAddr)
+
 	devices, _ := api.DiscoverAll(3 * time.Second) //TODO: this needs to be evented
 	for _, device := range devices {
 		deviceInfo, err := device.FetchDeviceInfo()
-		log.HandleError(err, "Unable to fetch device info")
-		fmt.Printf("Found => %+v\n", deviceInfo)
-		_, err = NewSwitch(bus, device, deviceInfo)
-
+		if err != nil {
+			log.HandleError(err, "Unable to fetch device info")
+		}
+		if isUnique(deviceInfo) {
+			fmt.Printf("Creating new switch => %+v\n", deviceInfo)
+			_, err = NewSwitch(bus, device, deviceInfo)
+		}
 	}
 
 	c := make(chan os.Signal, 1)
