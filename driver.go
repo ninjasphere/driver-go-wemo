@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bitly/go-simplejson"
 	"github.com/davecgh/go-spew/spew"
@@ -61,6 +62,14 @@ func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 		}
 		return nil
 	}
+
+	ticker := time.NewTicker(time.Second * 5)
+	go func() {
+		for _ = range ticker.C {
+			curState := device.GetBinaryState()
+			wemoSwitch.UpdateSwitchOnOffState(curState != 0) //curstate needs bool, but get state returns int
+		}
+	}()
 
 	ws := &WemoSwitchContext{
 		Info:   info,
