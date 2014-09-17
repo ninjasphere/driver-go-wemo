@@ -4,14 +4,18 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go.wemo"
 )
 
 const driverName = "driver-wemo"
+const SWITCH = "controllee"
+const MOTION = "sensor"
 
 var log = logger.GetLogger(driverName)
 
@@ -44,6 +48,11 @@ func main() {
 		log.HandleError(err, "Could not get net address")
 	}
 
+	/////////////////////NUKE ME////////////////////////////
+	ipAddr = "10.0.1.150"
+	////////////////////////////////////////////////////////
+
+	log.Infof("Discovering new Wemos with interface %s", ipAddr)
 	api := wemo.NewByIp(ipAddr)
 
 	devices, _ := api.DiscoverAll(3 * time.Second) //TODO: this needs to be evented
@@ -52,9 +61,22 @@ func main() {
 		if err != nil {
 			log.HandleError(err, "Unable to fetch device info")
 		}
+		deviceStr := deviceInfo.DeviceType
+
 		if isUnique(deviceInfo) {
-			fmt.Printf("Creating new switch => %+v\n", deviceInfo)
-			_, err = NewSwitch(bus, device, deviceInfo)
+			detectedSwitch, _ := regexp.MatchString(SWITCH, deviceStr)
+			detectedMotion, _ := regexp.MatchString(MOTION, deviceStr)
+
+			if detectedSwitch {
+				log.Infof("Creating new switch")
+				_, err = NewSwitch(bus, device, deviceInfo)
+			} else if detectedMotion {
+				log.Infof("Creating new motion detector")
+				_, err = NewMotion(bus, device, deviceInfo)
+			} else {
+				log.Errorf("Unknown device type: %s", deviceStr)
+			}
+			spew.Dump(deviceInfo)
 		}
 	}
 

@@ -5,38 +5,78 @@ import (
 	"time"
 
 	"github.com/bitly/go-simplejson"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go.wemo"
 
 	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/devices"
 )
 
-var seenSwitches []string //Store serial numbers of all seen switches
+var seenDevices []string //Store serial numbers of all seen switches
 
-type WemoSwitchContext struct {
+type WemoDeviceContext struct {
 	Info   *wemo.DeviceInfo
-	Switch *wemo.Device
+	Device *wemo.Device
 }
 
-func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo) (*WemoSwitchContext, error) {
+func NewMotion(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
 
-	log.Infof("Making Wemo switch with device info: ")
-	spew.Dump(info)
+	sigs, _ := simplejson.NewJson([]byte(`{
+			"ninja:manufacturer": "Belkin",
+			"ninja:productName": "Wemo",
+			"manufacturer:productModelId": "",
+			"ninja:productType": "Motion",
+			"ninja:thingType": "motion"
+	}`))
+
+	sigs.Set("manufacturer:productModelId", info.DeviceType)
+	deviceBus, err := bus.AnnounceDevice(info.SerialNumber, "wemo", info.FriendlyName, sigs)
+	if err != nil {
+		log.FatalError(err, "Failed to create light device bus ")
+	}
+
+	wemoMotion, err := devices.CreateMotionDevice(info.SerialNumber, deviceBus)
+
+	if err != nil {
+		log.FatalError(err, "Failed to create motion device")
+	}
+
+	if wemoMotion.EnableMotionChannel(); err != nil {
+		log.FatalError(err, "Could not enable wemo motion motion channel")
+	}
+
+	ticker := time.NewTicker(time.Second * 2) //TODO: this needs to be nicer for motion since this data is much more time sensitive.
+	go func() {
+		for _ = range ticker.C {
+			// curState := device.GetBinaryState()
+			// boolCurState := curState != 0
+			// log.Infof("Got state %t", boolCurState)
+			// wemoMotion.UpdateMotionState(boolCurState) //curstate needs bool, but get state returns int
+		}
+	}()
+
+	ws := &WemoDeviceContext{
+		Info:   info,
+		Device: device,
+	}
+
+	return ws, err
+}
+
+func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
 
 	sigs, _ := simplejson.NewJson([]byte(`{
       "ninja:manufacturer": "Belkin",
       "ninja:productName": "Wemo",
       "manufacturer:productModelId": "",
       "ninja:productType": "Switch",
-      "ninja:thingType": "switch"
+      "ninja:thingType": "unknown"
   }`))
 	sigs.Set("manufacturer:productModelId", info.DeviceType)
 
 	deviceBus, err := bus.AnnounceDevice(info.SerialNumber, "wemo", info.FriendlyName, sigs)
 
 	if err != nil {
-		log.FatalError(err, "Failed to create light device bus ")
+		log.FatalError(err, "Failed to create wemo switch device bus ")
 	}
 
 	// func CreateSwitchDevice(name string, bus *ninja.DeviceBus) (*SwitchDevice, error) {
@@ -71,18 +111,18 @@ func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 		}
 	}()
 
-	ws := &WemoSwitchContext{
+	ws := &WemoDeviceContext{
 		Info:   info,
-		Switch: device,
+		Device: device,
 	}
 
-	return ws, nil
+	return ws, err
 }
 
-func isUnique(newSwitch *wemo.DeviceInfo) bool {
+func isUnique(newDevice *wemo.DeviceInfo) bool {
 	ret := true
-	for _, s := range seenSwitches {
-		if newSwitch.SerialNumber == s {
+	for _, s := range seenDevices {
+		if newDevice.SerialNumber == s {
 			ret = false
 		}
 	}
