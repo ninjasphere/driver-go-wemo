@@ -2,15 +2,23 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"time"
-
-	"github.com/bitly/go-simplejson"
-	"github.com/ninjasphere/go.wemo"
-
-	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/devices"
+	"github.com/ninjasphere/go-ninja/api"
+	"github.com/ninjasphere/go-ninja/logger"
+	"github.com/ninjasphere/go-ninja/model"
+	"github.com/ninjasphere/go.wemo"
 )
 
+const (
+	driverName       = "com.ninjablocks.wemo"
+	switchDesignator = "controllee"
+	motionDesignator = "sensor"
+)
+
+var log = logger.GetLogger(driverName)
+var info = ninja.LoadModuleInfo("./package.json")
 var seenDevices []string //Store serial numbers of all seen switches
 
 type WemoDeviceContext struct {
@@ -18,76 +26,108 @@ type WemoDeviceContext struct {
 	Device *wemo.Device
 }
 
-func NewMotion(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
-
-	sigs, _ := simplejson.NewJson([]byte(`{
-			"ninja:manufacturer": "Belkin",
-			"ninja:productName": "Wemo",
-			"manufacturer:productModelId": "",
-			"ninja:productType": "Motion",
-			"ninja:thingType": "motion"
-	}`))
-
-	sigs.Set("manufacturer:productModelId", info.DeviceType)
-	deviceBus, err := bus.AnnounceDevice(info.SerialNumber, "wemo", info.FriendlyName, sigs)
-	if err != nil {
-		log.FatalError(err, "Failed to create light device bus ")
-	}
-
-	wemoMotion, err := devices.CreateMotionDevice(info.SerialNumber, deviceBus)
-
-	if err != nil {
-		log.FatalError(err, "Failed to create motion device")
-	}
-
-	if wemoMotion.EnableMotionChannel(); err != nil {
-		log.FatalError(err, "Could not enable wemo motion motion channel")
-	}
-
-	ticker := time.NewTicker(time.Second * 2) //TODO: this needs to be nicer for motion since this data is much more time sensitive.
-	go func() {
-		for _ = range ticker.C {
-			// curState := device.GetBinaryState()
-			// boolCurState := curState != 0
-			// log.Infof("Got state %t", boolCurState)
-			// wemoMotion.UpdateMotionState(boolCurState) //curstate needs bool, but get state returns int
-		}
-	}()
-
-	ws := &WemoDeviceContext{
-		Info:   info,
-		Device: device,
-	}
-
-	return ws, err
+type WemoMotion struct {
+	id	string
 }
 
-func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+type WemoDriver struct {
+	config    *WemoDriverConfig
+	conn      *ninja.Connection
+	sendEvent func(event string, payload interface{}) error
+	devices   *[]WemoDeviceContext
+}
 
-	sigs, _ := simplejson.NewJson([]byte(`{
-      "ninja:manufacturer": "Belkin",
-      "ninja:productName": "Wemo",
-      "manufacturer:productModelId": "",
-      "ninja:productType": "Switch",
-      "ninja:thingType": "unknown"
-  }`))
-	sigs.Set("manufacturer:productModelId", info.DeviceType)
+type WemoDriverConfig struct {
+	NumberOfDevices int
+}
 
-	deviceBus, err := bus.AnnounceDevice(info.SerialNumber, "wemo", info.FriendlyName, sigs)
+func defaultConfig() *WemoDriverConfig {
+	return &WemoDriverConfig{
+		NumberOfDevices: 0,
+	}
+}
 
+func NewWemoDriver() (*WemoDriver, error) {
+
+	log.Infof("Startingggggg " + driverName)
+
+	conn, err := ninja.Connect(driverName)
 	if err != nil {
-		log.FatalError(err, "Failed to create wemo switch device bus ")
+		log.HandleError(err, "Could not connect to MQTT")
+		return nil,err
 	}
 
-	// func CreateSwitchDevice(name string, bus *ninja.DeviceBus) (*SwitchDevice, error) {
 
-	wemoSwitch, err := devices.CreateSwitchDevice(info.SerialNumber, deviceBus)
+	driver := &WemoDriver{
+		conn:      conn,
+		config:    defaultConfig(),
+		sendEvent: nil,
+		devices:   nil,
+	}
+
+	log.Infof("1");
+	err = conn.ExportDriver(driver)
+	log.Infof("2");
+	if err != nil {
+		log.Fatalf("Failed to export Wemo driver: %s", err)
+	}
+
+	//temp
+	log.Infof("ballsballsballsballsballsballsballsballs")
+	driver.Start(defaultConfig())
+
+	return driver, nil
+}
+
+func (d *WemoDriver) Start(config *WemoDriverConfig) error {
+	log.Infof("Start method on Wemo driver called")
+	ipAddr, err := ninja.GetNetAddress()
+	if err != nil {
+		log.HandleError(err, "Could not get net address")
+		return err
+	}
+
+	log.Infof("Discovering new Wemos with ip interface %s", ipAddr)
+	api := wemo.NewByIp(ipAddr)
+
+	devices, _ := api.DiscoverAll(3 * time.Second) //TODO: this needs to be evented
+	for _, device := range devices {
+		deviceInfo, err := device.FetchDeviceInfo()
+		if err != nil {
+			log.HandleError(err, "Unable to fetch device info")
+			return err
+		}
+		deviceStr := deviceInfo.DeviceType
+
+		if isUnique(deviceInfo) {
+			detectedSwitch, _ := regexp.MatchString(switchDesignator, deviceStr)
+			detectedMotion, _ := regexp.MatchString(motionDesignator, deviceStr)
+
+			if detectedSwitch {
+				log.Infof("Creating new switch")
+				_, err = d.NewSwitch(device, deviceInfo)
+			} else if detectedMotion {
+				log.Infof("Creating new motion detector")
+				// _, err = d.NewMotion(device, deviceInfo)
+			} else {
+				log.Errorf("Unknown device type: %s", deviceStr)
+			}
+			// spew.Dump(deviceInfo)
+		}
+	}
+	return nil
+}
+
+func (d *WemoDriver) NewSwitch(device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+	deviceInfo := &model.Device{
+			NaturalID: info.MacAddress,
+			Name: &info.FriendlyName,
+			NaturalIDType: info.DeviceType,
+	}
+
+	wemoSwitch, err := devices.CreateSwitchDevice(d, deviceInfo, d.conn)
 	if err != nil {
 		log.FatalError(err, "Failed to create switch device")
-	}
-
-	if err := wemoSwitch.EnableOnOffChannel(); err != nil {
-		log.FatalError(err, "Could not enable wemo switch on-off channel")
 	}
 
 	wemoSwitch.ApplyOnOff = func(state bool) error {
@@ -107,7 +147,7 @@ func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 	go func() {
 		for _ = range ticker.C {
 			curState := device.GetBinaryState()
-			wemoSwitch.UpdateSwitchOnOffState(curState != 0) //curstate needs bool, but get state returns int
+			wemoSwitch.UpdateSwitchState(curState != 0) //curstate needs bool, but get state returns int
 		}
 	}()
 
@@ -119,6 +159,10 @@ func NewSwitch(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 	return ws, err
 }
 
+//TODO with new API
+// func (d *WemoDriver) NewMotion(device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+// }
+
 func isUnique(newDevice *wemo.DeviceInfo) bool {
 	ret := true
 	for _, s := range seenDevices {
@@ -127,4 +171,12 @@ func isUnique(newDevice *wemo.DeviceInfo) bool {
 		}
 	}
 	return ret
+}
+
+func (d *WemoDriver) GetModuleInfo() *model.Module {
+	return info
+}
+
+func (d *WemoDriver) SetEventHandler(sendEvent func(event string, payload interface{}) error) {
+	d.sendEvent = sendEvent
 }
