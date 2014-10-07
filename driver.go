@@ -9,6 +9,7 @@ import (
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go-ninja/model"
 	"github.com/ninjasphere/go.wemo"
+	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -24,10 +25,6 @@ var seenDevices []string //Store serial numbers of all seen switches
 type WemoDeviceContext struct {
 	Info   *wemo.DeviceInfo
 	Device *wemo.Device
-}
-
-type WemoMotion struct {
-	id	string
 }
 
 type WemoDriver struct {
@@ -48,9 +45,6 @@ func defaultConfig() *WemoDriverConfig {
 }
 
 func NewWemoDriver() (*WemoDriver, error) {
-
-	log.Infof("Startingggggg " + driverName)
-
 	conn, err := ninja.Connect(driverName)
 	if err != nil {
 		log.HandleError(err, "Could not connect to MQTT")
@@ -71,10 +65,6 @@ func NewWemoDriver() (*WemoDriver, error) {
 	if err != nil {
 		log.Fatalf("Failed to export Wemo driver: %s", err)
 	}
-
-	//temp
-	log.Infof("ballsballsballsballsballsballsballsballs")
-	driver.Start(defaultConfig())
 
 	return driver, nil
 }
@@ -108,11 +98,13 @@ func (d *WemoDriver) Start(config *WemoDriverConfig) error {
 				_, err = d.NewSwitch(device, deviceInfo)
 			} else if detectedMotion {
 				log.Infof("Creating new motion detector")
+				//TODO
 				// _, err = d.NewMotion(device, deviceInfo)
 			} else {
 				log.Errorf("Unknown device type: %s", deviceStr)
+				spew.Dump(deviceInfo)
 			}
-			// spew.Dump(deviceInfo)
+
 		}
 	}
 	return nil
@@ -159,8 +151,9 @@ func (d *WemoDriver) NewSwitch(device *wemo.Device, info *wemo.DeviceInfo) (*Wem
 	return ws, err
 }
 
-//TODO with new API
+//TODO : make motion with new APi
 // func (d *WemoDriver) NewMotion(device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+//
 // }
 
 func isUnique(newDevice *wemo.DeviceInfo) bool {
