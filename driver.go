@@ -30,23 +30,19 @@ func NewMotion(bus *ninja.DriverBus, device *wemo.Device, info *wemo.DeviceInfo)
 
 	sigs.Set("manufacturer:productModelId", info.DeviceType)
 	deviceBus, err := bus.AnnounceDevice(info.SerialNumber, "wemo", info.FriendlyName, sigs)
-	_ = deviceBus // FIXME
 	if err != nil {
 		log.FatalError(err, "Failed to create light device bus ")
 	}
 
-	//FIXME:
-	//wemoMotion, err := devices.CreateMotionDevice(info.SerialNumber, deviceBus)
-	err = fmt.Errorf("API change - please edit FIXME in driver.go")
+	wemoMotion, err := devices.CreateMotionDevice(info.SerialNumber, deviceBus)
 
 	if err != nil {
 		log.FatalError(err, "Failed to create motion device")
 	}
 
-	// FIXME:
-	//if wemoMotion.EnableMotionChannel(); err != nil {
-	//	log.FatalError(err, "Could not enable wemo motion motion channel")
-	//}
+	if wemoMotion.EnableMotionChannel(); err != nil {
+		log.FatalError(err, "Could not enable wemo motion motion channel")
+	}
 
 	ticker := time.NewTicker(time.Second * 2) //TODO: this needs to be nicer for motion since this data is much more time sensitive.
 	go func() {

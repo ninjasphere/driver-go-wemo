@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/ninjasphere/go-ninja"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go.wemo"
 )
