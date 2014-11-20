@@ -1,2 +1,2 @@
-/opt/ninjablocks/bin/nservice -q driver-go-wemo stop
-/opt/ninjablocks/bin/nservice -q driver-go-wemo start
+/opt/ninjablocks/bin/nservice -q driver-go-wemo stop || true
+/opt/ninjablocks/bin/nservice -q driver-go-wemo start || true
