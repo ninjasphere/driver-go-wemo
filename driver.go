@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"regexp"
 	"time"
-	"github.com/ninjasphere/go-ninja/devices"
+
+	"github.com/davecgh/go-spew/spew"
 	"github.com/ninjasphere/go-ninja/api"
+	"github.com/ninjasphere/go-ninja/devices"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go-ninja/model"
 	"github.com/ninjasphere/go.wemo"
-	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -48,9 +49,8 @@ func NewWemoDriver() (*WemoDriver, error) {
 	conn, err := ninja.Connect(driverName)
 	if err != nil {
 		log.HandleError(err, "Could not connect to MQTT")
-		return nil,err
+		return nil, err
 	}
-
 
 	driver := &WemoDriver{
 		conn:      conn,
@@ -59,9 +59,9 @@ func NewWemoDriver() (*WemoDriver, error) {
 		devices:   nil,
 	}
 
-	log.Infof("1");
+	log.Infof("1")
 	err = conn.ExportDriver(driver)
-	log.Infof("2");
+	log.Infof("2")
 	if err != nil {
 		log.Fatalf("Failed to export Wemo driver: %s", err)
 	}
@@ -111,10 +111,15 @@ func (d *WemoDriver) Start(config *WemoDriverConfig) error {
 }
 
 func (d *WemoDriver) NewSwitch(device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+	sigs := map[string]string{
+		"ninja:thingType": "socket",
+	}
+
 	deviceInfo := &model.Device{
-			NaturalID: info.MacAddress,
-			Name: &info.FriendlyName,
-			NaturalIDType: info.DeviceType,
+		NaturalID:     info.MacAddress,
+		Name:          &info.FriendlyName,
+		NaturalIDType: info.DeviceType,
+		Signatures:    &sigs,
 	}
 
 	wemoSwitch, err := devices.CreateSwitchDevice(d, deviceInfo, d.conn)
