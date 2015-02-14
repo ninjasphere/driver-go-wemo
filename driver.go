@@ -171,7 +171,7 @@ func (d *WemoDriver) NewMotion(driver ninja.Driver, conn *ninja.Connection, devi
 		return nil, err
 	}
 
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 1)
 	go func() {
 		for _ = range ticker.C {
 			curState := ws.Device.GetBinaryState()
