@@ -1,7 +1,7 @@
 {
   "id": "com.ninjablocks.wemo",
   "name": "driver-wemo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ninja Sphere - Belkin Wemo Driver",
   "main": "driver-go-wemo",
   "scripts": {
