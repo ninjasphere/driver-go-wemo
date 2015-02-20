@@ -32,5 +32,9 @@ fi
 # move the working path and build
 cd .gopath/src/github.com/${OWNER}/${PROJECT_NAME}
 go get -d -v ./...
-go build -ldflags "-X main.GitCommit ${GIT_COMMIT}${GIT_DIRTY} -X main.BugsnagKey=${BUGSNAG_KEY}" -o ${BIN_NAME}
+if [ "$BUILDBOX_BRANCH" = "master" ]; then
+	go build -ldflags "-X main.BugsnagKey=${BUGSNAG_KEY}" -tags release -o ${BIN_NAME}
+else
+	go build -o ${BIN_NAME}
+fi
 mv ${BIN_NAME} ./bin
