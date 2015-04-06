@@ -33,7 +33,7 @@ fi
 cd .gopath/src/github.com/${OWNER}/${PROJECT_NAME}
 go get -d -v ./...
 if [ "$BUILDBOX_BRANCH" = "master" ]; then
-	go build -ldflags "-X main.BugsnagKey=${BUGSNAG_KEY}" -tags release -o ${BIN_NAME}
+	go build -ldflags "-X main.BugsnagKey ${BUGSNAG_KEY}" -tags release -o ${BIN_NAME}
 else
 	go build -o ${BIN_NAME}
 fi
