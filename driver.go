@@ -11,18 +11,18 @@ import (
 	"github.com/ninjasphere/go-ninja/devices"
 	"github.com/ninjasphere/go-ninja/logger"
 	"github.com/ninjasphere/go-ninja/model"
-	"github.com/savaki/go.wemo"
+	"github.com/ninjasphere/go.wemo"
 	"golang.org/x/net/context"
+	"strings"
 )
 
 const (
-	driverName       = "com.ninjablocks.wemo"
 	switchDesignator = "controllee"
 	motionDesignator = "sensor"
 )
 
-var log = logger.GetLogger(driverName)
 var info = ninja.LoadModuleInfo("./package.json")
+var log = logger.GetLogger(info.ID)
 
 type WemoDeviceContext struct {
 	Info       *wemo.DeviceInfo
@@ -48,7 +48,7 @@ type WemoDriver struct {
 }
 
 func NewWemoDriver() (*WemoDriver, error) {
-	conn, err := ninja.Connect(driverName)
+	conn, err := ninja.Connect(info.ID)
 	if err != nil {
 		log.HandleError(err, "Could not connect to MQTT")
 		return nil, err
@@ -100,13 +100,13 @@ func (d *WemoDriver) startDiscovery() error {
 				}
 
 				if existing, ok := seen[deviceInfo.SerialNumber]; ok {
-					// We've already seen this device, update it's info
+					// We've already seen this device, update its info
 					existing.Info = deviceInfo
 					existing.Device = device
 
 				} else {
 
-					deviceStr := deviceInfo.DeviceType
+					deviceStr := strings.ToLower(deviceInfo.DeviceType)
 
 					detectedSwitch, _ := regexp.MatchString(switchDesignator, deviceStr)
 					detectedMotion, _ := regexp.MatchString(motionDesignator, deviceStr)
