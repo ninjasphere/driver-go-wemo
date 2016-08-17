@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	switchDesignator = "controllee"
-	motionDesignator = "sensor"
+	switchDesignator  = "controllee"
+	insightDesignator = "insight"
+	motionDesignator  = "sensor"
 )
 
 var info = ninja.LoadModuleInfo("./package.json")
@@ -108,7 +109,7 @@ func (d *WemoDriver) startDiscovery() error {
 
 					deviceStr := strings.ToLower(deviceInfo.DeviceType)
 
-					detectedSwitch, _ := regexp.MatchString(switchDesignator, deviceStr)
+					detectedSwitch, _ := regexp.MatchString(switchDesignator+"|"+insightDesignator, deviceStr)
 					detectedMotion, _ := regexp.MatchString(motionDesignator, deviceStr)
 
 					if detectedSwitch {
