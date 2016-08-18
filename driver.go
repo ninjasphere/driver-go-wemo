@@ -198,7 +198,8 @@ func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, devi
 	}
 
 	if hasPower {
-		powerChannel = channels.NewPowerChannel(d)
+		powerChannel = channels.NewPowerChannel(ws)
+		err = conn.ExportChannel(ws, powerChannel, "power")
 		if err != nil {
 			log.Fatalf("failed to export power channel: %v", err)
 		}
