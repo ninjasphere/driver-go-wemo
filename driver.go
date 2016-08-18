@@ -82,6 +82,11 @@ func (d *WemoDriver) startDiscovery() error {
 			ctx := context.Background()
 			for _, device := range devices {
 
+				device.Logger = func(fmt string, rest ...interface{}) (int, error) {
+					log.Infof(fmt, rest...)
+					return 0, nil
+				}
+
 				deviceInfo, err := device.FetchDeviceInfo(ctx)
 				if err != nil {
 					log.HandleError(err, "Unable to fetch device info")
