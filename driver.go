@@ -26,21 +26,9 @@ var info = ninja.LoadModuleInfo("./package.json")
 var log = logger.GetLogger(info.ID)
 
 type WemoDeviceContext struct {
-	Info       *wemo.DeviceInfo
-	Device     *wemo.Device
-	deviceInfo *model.Device
-	driver     ninja.Driver
-}
-
-func (w *WemoDeviceContext) GetDeviceInfo() *model.Device {
-	return w.deviceInfo
-}
-
-func (w *WemoDeviceContext) GetDriver() ninja.Driver {
-	return w.driver
-}
-
-func (w *WemoDeviceContext) SetEventHandler(sendEvent func(event string, payload interface{}) error) {
+	devices.BaseDevice
+	Info   *wemo.DeviceInfo
+	Device *wemo.Device
 }
 
 type WemoDriver struct {
@@ -109,26 +97,27 @@ func (d *WemoDriver) startDiscovery() error {
 
 					deviceStr := strings.ToLower(deviceInfo.DeviceType)
 
-					detectedSwitch, _ := regexp.MatchString(switchDesignator+"|"+insightDesignator, deviceStr)
+					detectedSwitch, _ := regexp.MatchString(switchDesignator, deviceStr)
+					detectedInsight, _ := regexp.MatchString(insightDesignator, deviceStr)
 					detectedMotion, _ := regexp.MatchString(motionDesignator, deviceStr)
 
-					if detectedSwitch {
-						log.Infof("Creating new switch")
-						wemoDevice, err := d.NewSwitch(device, deviceInfo)
+					if (detectedSwitch || detectedInsight) && detectedMotion {
+						log.Errorf("contradictory device type: %s", deviceStr)
+						spew.Dump(deviceInfo)
+						continue
+					}
+
+					if detectedSwitch || detectedInsight || detectedMotion {
+						log.Infof("Creating new device (%v, %v, %v)", detectedSwitch, detectedInsight, detectedMotion)
+						wemoDevice, err := d.NewSwitch(d, d.conn, device, deviceInfo, detectedSwitch || detectedInsight, detectedInsight, detectedMotion)
 						if err != nil {
-							log.Warningf("Failed to create switch: %s", err)
+							log.Warningf("Failed to create (front-end) device: %s", err)
 							continue
 						}
 						seen[deviceInfo.SerialNumber] = wemoDevice
-					} else if detectedMotion {
-						log.Infof("Creating new motion sensor")
-						wemoDevice, err := d.NewMotion(d, d.conn, device, deviceInfo)
-						if err != nil {
-							log.Warningf("Failed to create motion sensor: %s", err)
-							continue
-						}
-						seen[deviceInfo.SerialNumber] = wemoDevice
-					} else {
+					}
+
+					if !detectedSwitch && !detectedInsight && !detectedMotion {
 						log.Errorf("Unknown device type: %s", deviceStr)
 						spew.Dump(deviceInfo)
 					}
@@ -142,92 +131,97 @@ func (d *WemoDriver) startDiscovery() error {
 	return nil
 }
 
-func (d *WemoDriver) NewMotion(driver ninja.Driver, conn *ninja.Connection, device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
-	sigs := map[string]string{
-		"ninja:thingType":    "motion",
-		"ninja:manufacturer": "Belkin",
+func (wsd *WemoDeviceContext) SetOnOff(state bool) error {
+	var err error
+	if state {
+		wsd.Device.On()
+	} else {
+		wsd.Device.Off()
 	}
-
-	ws := &WemoDeviceContext{
-		Info:   info,
-		Device: device,
-		driver: driver,
-		deviceInfo: &model.Device{
-			NaturalID:     info.MacAddress,
-			Name:          &info.FriendlyName,
-			NaturalIDType: "wemo-mac",
-			Signatures:    &sigs,
-		},
-	}
-
-	err := conn.ExportDevice(ws)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("Failed to set on-off state: %s", err)
 	}
-
-	channel := channels.NewMotionChannel()
-
-	err = conn.ExportChannel(ws, channel, "motion")
-	if err != nil {
-		return nil, err
-	}
-
-	ticker := time.NewTicker(time.Second * 1)
-	go func() {
-		for _ = range ticker.C {
-			curState := ws.Device.GetBinaryState()
-			if curState != 0 {
-				channel.SendMotion()
-			}
-		}
-	}()
-
-	return ws, nil
+	return nil
 }
 
-func (d *WemoDriver) NewSwitch(device *wemo.Device, info *wemo.DeviceInfo) (*WemoDeviceContext, error) {
+func (wsd *WemoDeviceContext) ToggleOnOff() error {
+	curState := wsd.Device.GetBinaryState()
+	if curState != 0 {
+		return wsd.SetOnOff(false)
+	} else {
+		return wsd.SetOnOff(true)
+	}
+}
+
+func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, device *wemo.Device, info *wemo.DeviceInfo, hasSwitch bool, hasPower bool, hasMotion bool) (*WemoDeviceContext, error) {
 	sigs := map[string]string{
 		"ninja:thingType":    "socket",
 		"ninja:manufacturer": "Belkin",
 	}
 
-	deviceInfo := &model.Device{
-		NaturalID:     info.MacAddress,
-		Name:          &info.FriendlyName,
-		NaturalIDType: info.DeviceType,
-		Signatures:    &sigs,
+	ws := &WemoDeviceContext{
+		BaseDevice: devices.BaseDevice{
+			Driver: driver,
+			Info: &model.Device{
+				NaturalID:     info.MacAddress,
+				Name:          &info.FriendlyName,
+				NaturalIDType: info.DeviceType,
+				Signatures:    &sigs,
+			},
+			Conn: conn,
+			Log_: log,
+		},
+		Info:   info,
+		Device: device,
 	}
 
-	wemoSwitch, err := devices.CreateSwitchDevice(d, deviceInfo, d.conn)
+	if err := conn.ExportDevice(ws); err != nil {
+		log.Fatalf("failed to export device: %v", err)
+	}
+
+	var onOffChannel *channels.OnOffChannel
+	var powerChannel *channels.PowerChannel
+	var motionChannel *channels.MotionChannel
+
+	onOffChannel = channels.NewOnOffChannel(ws)
+	err := conn.ExportChannel(ws, onOffChannel, "on-off")
 	if err != nil {
-		log.FatalError(err, "Failed to create switch device")
+		log.Fatalf("failed to export on-off channel: %v", err)
 	}
 
-	wemoSwitch.ApplyOnOff = func(state bool) error {
-		var err error
-		if state {
-			device.On()
-		} else {
-			device.Off()
-		}
+	if hasMotion {
+		motionChannel = channels.NewMotionChannel()
+		err = conn.ExportChannel(ws, motionChannel, "motion")
 		if err != nil {
-			return fmt.Errorf("Failed to set on-off state: %s", err)
+			return nil, err
 		}
-		return nil
+	}
+
+	if hasPower {
+		powerChannel = channels.NewPowerChannel(d)
+		if err != nil {
+			log.Fatalf("failed to export power channel: %v", err)
+		}
 	}
 
 	ticker := time.NewTicker(time.Second * 5)
 	go func() {
 		for _ = range ticker.C {
 			curState := device.GetBinaryState()
-			wemoSwitch.UpdateSwitchState(curState != 0) //curstate needs bool, but get state returns int
+			onOffChannel.SendState(curState != 0) //curstate needs bool, but get state returns int
+			if powerChannel != nil {
+				insightState := device.GetInsightParams()
+				powerChannel.SendState(float64(insightState.Power) / 1000.0) //curstate needs bool, but get state returns int
+			}
+
+			if motionChannel != nil {
+				curState := ws.Device.GetBinaryState()
+				if curState != 0 {
+					motionChannel.SendMotion()
+				}
+			}
 		}
 	}()
-
-	ws := &WemoDeviceContext{
-		Info:   info,
-		Device: device,
-	}
 
 	return ws, nil
 }
