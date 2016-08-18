@@ -210,8 +210,11 @@ func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, devi
 			curState := device.GetBinaryState()
 			onOffChannel.SendState(curState != 0) //curstate needs bool, but get state returns int
 			if powerChannel != nil {
-				insightState := device.GetInsightParams()
-				powerChannel.SendState(float64(insightState.Power) / 1000.0) //curstate needs bool, but get state returns int
+				if insightState := device.GetInsightParams(); insightState != nil {
+					powerChannel.SendState(float64(insightState.Power) / 1000.0) //curstate needs bool, but get state returns int
+				} else {
+					log.Infof("power reporting failed")
+				}
 			}
 
 			if motionChannel != nil {
