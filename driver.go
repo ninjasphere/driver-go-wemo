@@ -27,13 +27,15 @@ var log = logger.GetLogger(info.ID)
 
 type WemoDeviceContext struct {
 	devices.BaseDevice
-	Info   *wemo.DeviceInfo
-	Device *wemo.Device
+	Info    *wemo.DeviceInfo
+	Device  *wemo.Device
+	refresh chan struct{}
 }
 
 type WemoDriver struct {
 	conn      *ninja.Connection
 	sendEvent func(event string, payload interface{}) error
+	refresh   chan struct{}
 }
 
 func NewWemoDriver() (*WemoDriver, error) {
@@ -44,7 +46,8 @@ func NewWemoDriver() (*WemoDriver, error) {
 	}
 
 	driver := &WemoDriver{
-		conn: conn,
+		conn:    conn,
+		refresh: make(chan struct{}),
 	}
 
 	err = conn.ExportDriver(driver)
@@ -143,6 +146,7 @@ func (wsd *WemoDeviceContext) SetOnOff(state bool) error {
 	} else {
 		wsd.Device.Off()
 	}
+	wsd.refresh <- struct{}{}
 	if err != nil {
 		return fmt.Errorf("Failed to set on-off state: %s", err)
 	}
@@ -176,8 +180,9 @@ func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, devi
 			Conn: conn,
 			Log_: log,
 		},
-		Info:   info,
-		Device: device,
+		Info:    info,
+		Device:  device,
+		refresh: d.refresh,
 	}
 
 	if err := conn.ExportDevice(ws); err != nil {
@@ -212,7 +217,7 @@ func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, devi
 
 	ticker := time.NewTicker(time.Second * 5)
 	go func() {
-		for _ = range ticker.C {
+		refresh := func() {
 			curState := device.GetBinaryState()
 			onOffChannel.SendState(curState != 0) //curstate needs bool, but get state returns int
 			if powerChannel != nil {
@@ -229,6 +234,15 @@ func (d *WemoDriver) NewSwitch(driver ninja.Driver, conn *ninja.Connection, devi
 					motionChannel.SendMotion()
 				}
 			}
+		}
+		for {
+			select {
+			case <-ticker.C:
+				refresh()
+			case <-d.refresh:
+				refresh()
+			}
+
 		}
 	}()
 
